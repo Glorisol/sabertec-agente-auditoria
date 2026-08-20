@@ -4,3 +4,4 @@ google-genai
 reportlab
 xlsxwriter
 altair
+openpyxl
