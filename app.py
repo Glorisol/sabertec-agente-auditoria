@@ -38,7 +38,6 @@ def create_clean_pdf(texto_informe, dfs_dict):
     
     title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#0F172A'), alignment=1, spaceAfter=12)
     
-    # Estilo especial para los subtítulos en negrita y color corporativo
     heading_style = ParagraphStyle('HeadingStyle', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor('#0F172A'), spaceBefore=12, spaceAfter=4, fontName='Helvetica-Bold')
     
     body_style = ParagraphStyle('BodyStyle', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#334155'), spaceAfter=5, leading=12)
@@ -47,7 +46,6 @@ def create_clean_pdf(texto_informe, dfs_dict):
     elements.append(Paragraph("SABERTEC - Dictamen Gerencial de Auditoría", title_style))
     elements.append(Spacer(1, 5))
 
-    # Limpiar asteriscos y marcas de markdown del texto de la IA
     texto_limpio_ia = re.sub(r'\*\*', '', texto_informe)
     texto_limpio_ia = re.sub(r'#+\s?', '', texto_limpio_ia)
 
@@ -56,7 +54,6 @@ def create_clean_pdf(texto_informe, dfs_dict):
     for paragraph in texto_limpio_ia.split('\n'):
         p_text = paragraph.strip()
         if p_text and not p_text.startswith('---'):
-            # Detectar subtítulos automáticos (si están en mayúsculas o terminan en dos puntos o palabras clave)
             es_subtitulo = (
                 p_text.isupper() and len(p_text) > 4 or 
                 p_text.endswith(':') or 
@@ -164,7 +161,9 @@ if st.session_state.get('analisis_hecho', False):
     dfs_cargados = st.session_state['dfs_cargados']
     
     with col_g1:
-        st.markdown("#### 🏆 Top de Ventas")
+        st.markdown("#### 🏆 Top de Análisis / Ventas")
+        grafico_pintado = False
+        # 1. Intento con palabras clave tradicionales
         for nombre, df in dfs_cargados.items():
             if any(kw in nombre.upper() for kw in ["VENT", "PRODUCTO", "CLIENTE"]):
                 num_cols = df.select_dtypes(include=['number']).columns
@@ -177,10 +176,27 @@ if st.session_state.get('analisis_hecho', False):
                         color=alt.Color(f'{cat_cols[0]}:N', legend=None)
                     ).properties(height=300)
                     st.altair_chart(chart, use_container_width=True)
+                    grafico_pintado = True
+                    break
+        # 2. Respaldo inteligente: Si no coincidió el nombre, toma el primer archivo con datos aptos
+        if not grafico_pintado:
+            for nombre, df in dfs_cargados.items():
+                num_cols = df.select_dtypes(include=['number']).columns
+                cat_cols = df.select_dtypes(include=['object', 'category']).columns
+                if len(num_cols) > 0 and len(cat_cols) > 0:
+                    df_top = df.head(10)
+                    chart = alt.Chart(df_top).mark_bar().encode(
+                        x=alt.X(f'{cat_cols[0]}:N', sort='-y', title='Categoría'),
+                        y=alt.Y(f'{num_cols[0]}:Q', title='Valor'),
+                        color=alt.Color(f'{cat_cols[0]}:N', legend=None)
+                    ).properties(height=300)
+                    st.altair_chart(chart, use_container_width=True)
                     break
 
     with col_g2:
         st.markdown("#### ⚠️ Análisis de Riesgo / Cumplimiento")
+        grafico_riesgo_pintado = False
+        # 1. Intento con palabras clave tradicionales
         for nombre, df in dfs_cargados.items():
             if any(kw in nombre.upper() for kw in ["RIESGO", "CUMPLIMIENTO", "MOR", "ESTADO"]):
                 cat_cols = df.select_dtypes(include=['object', 'category']).columns
@@ -192,6 +208,22 @@ if st.session_state.get('analisis_hecho', False):
                         theta=alt.Theta(field="Cantidad", type="quantitative"),
                         color=alt.Color(field="Nivel_Riesgo", type="nominal"),
                         tooltip=['Nivel_Riesgo', 'Cantidad']
+                    ).properties(height=300)
+                    st.altair_chart(chart_risk, use_container_width=True)
+                    grafico_riesgo_pintado = True
+                    break
+        # 2. Respaldo inteligente para gráficos circulares
+        if not grafico_riesgo_pintado:
+            for nombre, df in dfs_cargados.items():
+                cat_cols = df.select_dtypes(include=['object', 'category']).columns
+                if len(cat_cols) > 0:
+                    col_conteo = cat_cols[0]
+                    df_riesgo_counts = df[col_conteo].value_counts().reset_index()
+                    df_riesgo_counts.columns = ['Categoria', 'Cantidad']
+                    chart_risk = alt.Chart(df_riesgo_counts).mark_arc(innerRadius=50).encode(
+                        theta=alt.Theta(field="Cantidad", type="quantitative"),
+                        color=alt.Color(field="Categoria", type="nominal"),
+                        tooltip=['Categoria', 'Cantidad']
                     ).properties(height=300)
                     st.altair_chart(chart_risk, use_container_width=True)
                     break
