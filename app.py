@@ -23,9 +23,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("⚡ Sabertec | Agente IA de Auditoría y Riesgos")
-st.markdown("Sube tus archivos de **Conciliación, Ventas y Riesgo/Cumplimiento** para ejecutar el análisis completo, gráficos y reportes exportables.")
+st.markdown("Sube tus archivos (Excel o CSV) con los nombres de columnas que prefieras. El agente se adapta automáticamente.")
 
-uploaded_files = st.file_uploader("Sube todos tus archivos (Excel o CSV)", accept_multiple_files=True, type=["csv", "xlsx"])
+uploaded_files = st.file_uploader("Sube tus archivos", accept_multiple_files=True, type=["csv", "xlsx"])
 user_prompt = st.text_area("Instrucción para el agente:", value="Realiza una auditoría integral cruzando la conciliación bancaria, el riesgo y las ventas.", height=100)
 
 def create_clean_pdf(texto_informe, dfs_dict):
@@ -157,82 +157,47 @@ if st.session_state.get('analisis_hecho', False):
         st.markdown("#### 🏆 Top de Análisis / Ventas")
         grafico_pintado = False
         for nombre, df in dfs_cargados.items():
-            if any(kw in nombre.upper() for kw in ["VENT", "PRODUCTO", "CLIENTE"]):
-                num_cols = df.select_dtypes(include=['number']).columns
-                cat_cols = df.select_dtypes(include=['object', 'category']).columns
-                if len(num_cols) > 0 and len(cat_cols) > 0:
-                    df_top = df.sort_values(by=num_cols[0], ascending=False).head(10)
-                    chart = alt.Chart(df_top).mark_bar().encode(
-                        x=alt.X(f'{cat_cols[0]}:N', sort='-y', title='Categoría'),
-                        y=alt.Y(f'{num_cols[0]}:Q', title='Valor'),
-                        color=alt.Color(f'{cat_cols[0]}:N', legend=None)
-                    ).properties(height=300)
-                    st.altair_chart(chart, use_container_width=True)
-                    grafico_pintado = True
-                    break
-        if not grafico_pintado:
-            for nombre, df in dfs_cargados.items():
-                num_cols = df.select_dtypes(include=['number']).columns
-                cat_cols = df.select_dtypes(include=['object', 'category']).columns
-                if len(num_cols) > 0 and len(cat_cols) > 0:
-                    chart = alt.Chart(df.head(10)).mark_bar().encode(
-                        x=alt.X(f'{cat_cols[0]}:N', sort='-y', title='Categoría'),
-                        y=alt.Y(f'{num_cols[0]}:Q', title='Valor'),
-                        color=alt.Color(f'{cat_cols[0]}:N', legend=None)
-                    ).properties(height=300)
-                    st.altair_chart(chart, use_container_width=True)
-                    break
+            num_cols = df.select_dtypes(include=['number']).columns
+            cat_cols = df.select_dtypes(include=['object', 'category']).columns
+            if len(num_cols) > 0 and len(cat_cols) > 0:
+                df_top = df.sort_values(by=num_cols[0], ascending=False).head(10)
+                chart = alt.Chart(df_top).mark_bar().encode(
+                    x=alt.X(f'{cat_cols[0]}:N', sort='-y', title='Categoría'),
+                    y=alt.Y(f'{num_cols[0]}:Q', title='Valor'),
+                    color=alt.Color(f'{cat_cols[0]}:N', legend=None)
+                ).properties(height=300)
+                st.altair_chart(chart, use_container_width=True)
+                grafico_pintado = True
+                break
 
     with col_g2:
-        st.markdown("#### ⚠️ Análisis de Riesgo / Alertas")
+        st.markdown("#### ⚠️ Análisis de Distribución / Alertas")
         grafico_riesgo_pintado = False
         
+        # En lugar de buscar nombres fijos, evaluamos dinámicamente cualquier archivo disponible
         for nombre, df in dfs_cargados.items():
-            if any(kw in nombre.upper() for kw in ["RIESGO", "CUMPLIMIENTO", "MOR", "ESTADO", "ALERTA"]):
-                cat_cols = df.select_dtypes(include=['object', 'category']).columns
-                if len(cat_cols) > 0:
-                    cols_candidatas = [c for c in cat_cols if df[c].nunique() < len(df) and df[c].nunique() > 1]
-                    mejor_col = min(cols_candidatas, key=lambda col: df[col].nunique()) if cols_candidatas else min(cat_cols, key=lambda col: df[col].nunique())
-                    
-                    # Agrupación inteligente para evitar dispersión de textos largos
-                    df_trabajo = df.copy()
-                    def clasificar_riesgo(texto):
-                        t = str(texto).upper()
-                        if "CRÍTICA" in t or "FRAUDE" in t or "ALTO RIESGO" in t:
-                            return "Crítico"
-                        elif "NORMAL" in t:
-                            return "Normal"
-                        else:
-                            return "Advertencia / Revisar"
-                            
-                    df_trabajo['Categoria_Riesgo'] = df_trabajo[mejor_col].apply(clasificar_riesgo)
-                    df_counts = df_trabajo['Categoria_Riesgo'].value_counts().reset_index()
-                    df_counts.columns = ['Categoria', 'Cantidad']
-                    
-                    chart_risk = alt.Chart(df_counts).mark_arc(innerRadius=50).encode(
-                        theta=alt.Theta(field="Cantidad", type="quantitative"),
-                        color=alt.Color(field="Categoria", type="nominal"),
-                        tooltip=['Categoria', 'Cantidad']
-                    ).properties(height=300)
-                    st.altair_chart(chart_risk, use_container_width=True)
-                    grafico_riesgo_pintado = True
-                    break
+            cat_cols = df.select_dtypes(include=['object', 'category']).columns
+            # Filtramos columnas que tengan sentido agrupar (que no sean identificadores únicos puros como IDs con 100% de unicidad)
+            cols_validas = [c for c in cat_cols if df[c].nunique() < len(df) and df[c].nunique() > 1]
+            
+            if cols_validas:
+                # Seleccionamos la columna categórica más representativa (la que tenga menor cantidad de valores únicos de tipo texto descriptivo)
+                col_elegida = min(cols_validas, key=lambda col: df[col].nunique())
+                
+                df_counts = df[col_elegida].value_counts().reset_index()
+                df_counts.columns = ['Categoria', 'Cantidad']
+                
+                chart_risk = alt.Chart(df_counts).mark_arc(innerRadius=50).encode(
+                    theta=alt.Theta(field="Cantidad", type="quantitative"),
+                    color=alt.Color(field="Categoria", type="nominal"),
+                    tooltip=['Categoria', 'Cantidad']
+                ).properties(height=300)
+                st.altair_chart(chart_risk, use_container_width=True)
+                grafico_riesgo_pintado = True
+                break
         
         if not grafico_riesgo_pintado:
-            for nombre, df in dfs_cargados.items():
-                cat_cols = df.select_dtypes(include=['object', 'category']).columns
-                if len(cat_cols) > 0:
-                    mejor_col = min(cat_cols, key=lambda col: df[col].nunique())
-                    df_trabajo = df.copy()
-                    df_counts = df_trabajo[mejor_col].value_counts().reset_index()
-                    df_counts.columns = ['Categoria', 'Cantidad']
-                    chart_risk = alt.Chart(df_counts).mark_arc(innerRadius=50).encode(
-                        theta=alt.Theta(field="Cantidad", type="quantitative"),
-                        color=alt.Color(field="Categoria", type="nominal"),
-                        tooltip=['Categoria', 'Cantidad']
-                    ).properties(height=300)
-                    st.altair_chart(chart_risk, use_container_width=True)
-                    break
+            st.info("No se encontró una columna categórica adecuada para graficar en los archivos subidos.")
 
     st.markdown("---")
     st.markdown("### 📥 Exportar Resultados y Reportes")
