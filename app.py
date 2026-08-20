@@ -187,20 +187,28 @@ if st.session_state.get('analisis_hecho', False):
         st.markdown("#### ⚠️ Análisis de Riesgo / Alertas")
         grafico_riesgo_pintado = False
         
-        # Búsqueda exclusiva del archivo de Riesgo
         for nombre, df in dfs_cargados.items():
             if any(kw in nombre.upper() for kw in ["RIESGO", "CUMPLIMIENTO", "MOR", "ESTADO", "ALERTA"]):
                 cat_cols = df.select_dtypes(include=['object', 'category']).columns
                 if len(cat_cols) > 0:
-                    # Filtramos columnas que NO sean IDs únicos largos (buscando las que tengan baja unicidad y más de 1 valor repetible)
                     cols_candidatas = [c for c in cat_cols if df[c].nunique() < len(df) and df[c].nunique() > 1]
-                    if cols_candidatas:
-                        mejor_col = min(cols_candidatas, key=lambda col: df[col].nunique())
-                    else:
-                        mejor_col = min(cat_cols, key=lambda col: df[col].nunique())
-                        
-                    df_counts = df[mejor_col].value_counts().reset_index()
+                    mejor_col = min(cols_candidatas, key=lambda col: df[col].nunique()) if cols_candidatas else min(cat_cols, key=lambda col: df[col].nunique())
+                    
+                    # Agrupación inteligente para evitar dispersión de textos largos
+                    df_trabajo = df.copy()
+                    def clasificar_riesgo(texto):
+                        t = str(texto).upper()
+                        if "CRÍTICA" in t or "FRAUDE" in t or "ALTO RIESGO" in t:
+                            return "Crítico"
+                        elif "NORMAL" in t:
+                            return "Normal"
+                        else:
+                            return "Advertencia / Revisar"
+                            
+                    df_trabajo['Categoria_Riesgo'] = df_trabajo[mejor_col].apply(clasificar_riesgo)
+                    df_counts = df_trabajo['Categoria_Riesgo'].value_counts().reset_index()
                     df_counts.columns = ['Categoria', 'Cantidad']
+                    
                     chart_risk = alt.Chart(df_counts).mark_arc(innerRadius=50).encode(
                         theta=alt.Theta(field="Cantidad", type="quantitative"),
                         color=alt.Color(field="Categoria", type="nominal"),
@@ -215,7 +223,8 @@ if st.session_state.get('analisis_hecho', False):
                 cat_cols = df.select_dtypes(include=['object', 'category']).columns
                 if len(cat_cols) > 0:
                     mejor_col = min(cat_cols, key=lambda col: df[col].nunique())
-                    df_counts = df[mejor_col].value_counts().reset_index()
+                    df_trabajo = df.copy()
+                    df_counts = df_trabajo[mejor_col].value_counts().reset_index()
                     df_counts.columns = ['Categoria', 'Cantidad']
                     chart_risk = alt.Chart(df_counts).mark_arc(innerRadius=50).encode(
                         theta=alt.Theta(field="Cantidad", type="quantitative"),
