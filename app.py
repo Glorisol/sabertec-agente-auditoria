@@ -28,14 +28,12 @@ st.markdown("Sube tus archivos de **Conciliación, Ventas y Riesgo/Cumplimiento*
 uploaded_files = st.file_uploader("Sube todos tus archivos (Excel o CSV)", accept_multiple_files=True, type=["csv", "xlsx"])
 user_prompt = st.text_area("Instrucción para el agente:", value="Realiza una auditoría integral cruzando la conciliación bancaria, el riesgo y las ventas.", height=100)
 
-# FUNCIÓN DE PDF CON DETECCIÓN INTELIGENTE DE SUBTÍTULOS EN NEGRITA
 def create_clean_pdf(texto_informe, dfs_dict):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
     elements = []
     
     styles = getSampleStyleSheet()
-    
     title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#0F172A'), alignment=1, spaceAfter=12)
     heading_style = ParagraphStyle('HeadingStyle', parent=styles['Heading2'], fontSize=11, textColor=colors.HexColor('#0F172A'), spaceBefore=12, spaceAfter=4, fontName='Helvetica-Bold')
     body_style = ParagraphStyle('BodyStyle', parent=styles['Normal'], fontSize=9, textColor=colors.HexColor('#334155'), spaceAfter=5, leading=12)
@@ -57,7 +55,6 @@ def create_clean_pdf(texto_informe, dfs_dict):
                 p_text.endswith(':') or 
                 any(keyword in p_text.upper() for keyword in ["RESUMEN EJECUTIVO", "HALLAZGOS", "DICTAMEN", "RECOMENDACIONES", "ÁREA"])
             )
-            
             if es_subtitulo:
                 elements.append(Paragraph(p_text, heading_style))
             else:
@@ -187,16 +184,21 @@ if st.session_state.get('analisis_hecho', False):
                     break
 
     with col_g2:
-        st.markdown("#### ⚠️ Análisis de Categorías / Alertas")
+        st.markdown("#### ⚠️ Análisis de Riesgo / Alertas")
         grafico_riesgo_pintado = False
         
-        # Búsqueda inteligente de columna categórica ideal para gráfica circular (evita tomar IDs únicos)
+        # Búsqueda exclusiva del archivo de Riesgo
         for nombre, df in dfs_cargados.items():
             if any(kw in nombre.upper() for kw in ["RIESGO", "CUMPLIMIENTO", "MOR", "ESTADO", "ALERTA"]):
                 cat_cols = df.select_dtypes(include=['object', 'category']).columns
                 if len(cat_cols) > 0:
-                    # Elegir la columna con menos valores únicos (agrupable) en lugar de la primera por defecto
-                    mejor_col = min(cat_cols, key=lambda col: df[col].nunique())
+                    # Filtramos columnas que NO sean IDs únicos largos (buscando las que tengan baja unicidad y más de 1 valor repetible)
+                    cols_candidatas = [c for c in cat_cols if df[c].nunique() < len(df) and df[c].nunique() > 1]
+                    if cols_candidatas:
+                        mejor_col = min(cols_candidatas, key=lambda col: df[col].nunique())
+                    else:
+                        mejor_col = min(cat_cols, key=lambda col: df[col].nunique())
+                        
                     df_counts = df[mejor_col].value_counts().reset_index()
                     df_counts.columns = ['Categoria', 'Cantidad']
                     chart_risk = alt.Chart(df_counts).mark_arc(innerRadius=50).encode(
