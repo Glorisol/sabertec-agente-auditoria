@@ -23,10 +23,25 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.title("⚡ Sabertec | Agente IA de Auditoría y Riesgos")
-st.markdown("Sube tus archivos (Excel o CSV) con los nombres de columnas que prefieras. El agente se adapta automáticamente.")
+st.markdown("Sube tus archivos (Excel o CSV). El agente audita la calidad de tus datos y se adapta automáticamente a la estructura.")
 
 uploaded_files = st.file_uploader("Sube tus archivos", accept_multiple_files=True, type=["csv", "xlsx"])
 user_prompt = st.text_area("Instrucción para el agente:", value="Realiza una auditoría integral cruzando la conciliación bancaria, el riesgo y las ventas.", height=100)
+
+# --- FUNCIÓN DE AUDITORÍA DE CALIDAD DE DATOS ---
+def auditar_calidad_data(dfs_dict):
+    reporte = ["### 🔍 Reporte de Calidad de Datos (Pre-Auditoría)"]
+    inconsistencias = False
+    for nombre, df in dfs_dict.items():
+        if df.isnull().values.any():
+            reporte.append(f"- **{nombre}**: Se detectaron valores vacíos o nulos que podrían afectar el cruce de datos.")
+            inconsistencias = True
+        for col in df.select_dtypes(include=['object']):
+            valores_unicos = df[col].dropna().unique()
+            if all(len(str(v)) <= 3 for v in valores_unicos) and len(valores_unicos) < 15:
+                reporte.append(f"- **{nombre}**: La columna '{col}' utiliza códigos abreviados ({list(valores_unicos)[:3]}). Se recomienda estandarizar a nombres completos en el archivo fuente para mayor claridad gerencial.")
+                inconsistencias = True
+    return "\n".join(reporte) if inconsistencias else "✅ Calidad de datos validada: Estructura óptima sin anomalías de formato detectadas."
 
 def create_clean_pdf(texto_informe, dfs_dict):
     buffer = io.BytesIO()
@@ -100,7 +115,7 @@ if st.button("🧠 Activar Razonamiento del Agente", type="primary"):
     if not uploaded_files or not user_prompt:
         st.warning("⚠️ Por favor, sube al menos un archivo y escribe una instrucción.")
     else:
-        with st.spinner("🤖 El agente está leyendo los documentos y analizando..."):
+        with st.spinner("🤖 El agente está auditando la calidad de los datos y analizando..."):
             contexto_documentos = ""
             dfs_cargados = {}
             for arch in uploaded_files:
@@ -119,14 +134,21 @@ if st.button("🧠 Activar Razonamiento del Agente", type="primary"):
                 except Exception as e:
                     contexto_documentos += f"\nError leyendo {arch.name}: {str(e)}"
 
+            # Ejecutamos la auditoría de calidad de datos previa
+            auditoria_data = auditar_calidad_data(dfs_cargados)
+
             try:
                 client = genai.Client(api_key=GEMINI_API_KEY)
-                instruccion_maestra_permanente = """
-                ERES UN AGENTE AUDITOR SENIOR DE SABERTEC.
+                instruccion_maestra_permanente = f"""
+                ERES UN ANALISTA DE DATOS Y AGENTE AUDITOR SENIOR DE SABERTEC.
+                RESULTADOS DE LA AUDITORÍA PREVIA DE CALIDAD DE DATOS:
+                {auditoria_data}
+                
                 Tus reglas de oro son:
-                1. Realiza una auditoría integral cruzando la conciliación bancaria, el riesgo y las ventas.
-                2. REGLA ESTRICTA: Redacta el informe única y exclusivamente en lenguaje gerencial, ejecutivo y de auditoría profesional. NO incluyas código de programación, bloques de código, ni menciones a Python o librerías técnicas en el texto del dictamen.
-                3. Estructura el dictamen con resumen ejecutivo, hallazgos críticos y recomendaciones de acción concretas.
+                1. Incorpora en el dictamen la evaluación de la calidad de los datos proporcionados.
+                2. Realiza una auditoría integral cruzando la conciliación bancaria, el riesgo y las ventas según lo solicitado.
+                3. REGLA ESTRICTA: Redacta el informe única y exclusivamente en lenguaje gerencial, ejecutivo y de auditoría profesional. NO incluyas código de programación, bloques de código, ni menciones a Python o librerías técnicas en el texto del dictamen.
+                4. Estructura el dictamen con resumen ejecutivo, hallazgos críticos, observaciones de calidad de datos y recomendaciones de acción concretas.
                 """
                 prompt_final = f"{instruccion_maestra_permanente}\nINSTRUCCIÓN DEL USUARIO: {user_prompt}\nA continuación tienes los datos extraídos:\n{contexto_documentos}"
 
@@ -174,16 +196,12 @@ if st.session_state.get('analisis_hecho', False):
         st.markdown("#### ⚠️ Análisis de Distribución / Alertas")
         grafico_riesgo_pintado = False
         
-        # En lugar de buscar nombres fijos, evaluamos dinámicamente cualquier archivo disponible
         for nombre, df in dfs_cargados.items():
             cat_cols = df.select_dtypes(include=['object', 'category']).columns
-            # Filtramos columnas que tengan sentido agrupar (que no sean identificadores únicos puros como IDs con 100% de unicidad)
             cols_validas = [c for c in cat_cols if df[c].nunique() < len(df) and df[c].nunique() > 1]
             
             if cols_validas:
-                # Seleccionamos la columna categórica más representativa (la que tenga menor cantidad de valores únicos de tipo texto descriptivo)
                 col_elegida = min(cols_validas, key=lambda col: df[col].nunique())
-                
                 df_counts = df[col_elegida].value_counts().reset_index()
                 df_counts.columns = ['Categoria', 'Cantidad']
                 
