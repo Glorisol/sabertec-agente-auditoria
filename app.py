@@ -58,22 +58,25 @@ def create_clean_pdf(texto_informe, dfs_dict):
     elements.append(Spacer(1, 5))
 
     texto_limpio_ia = re.sub(r'\*\*', '', texto_informe)
-    texto_limpio_ia = re.sub(r'#+\s?', '', texto_limpio_ia)
-
+    
     elements.append(Paragraph("Informe Ejecutivo", heading_style))
     
     for paragraph in texto_limpio_ia.split('\n'):
         p_text = paragraph.strip()
-        if p_text and not p_text.startswith('---'):
+        
+        # Filtramos y limpiamos las líneas que tengan sintaxis de tabla markdown para que no salgan símbolos raros
+        if p_text and not p_text.startswith('---') and not (p_text.startswith('|') and p_text.endswith('|')):
+            p_text_limpio = p_text.replace('|', '   ').replace('---', '')
+            
             es_subtitulo = (
-                p_text.isupper() and len(p_text) > 4 or 
-                p_text.endswith(':') or 
-                any(keyword in p_text.upper() for keyword in ["RESUMEN EJECUTIVO", "HALLAZGOS", "DICTAMEN", "RECOMENDACIONES", "ÁREA"])
+                p_text_limpio.isupper() and len(p_text_limpio) > 4 or 
+                p_text_limpio.endswith(':') or 
+                any(keyword in p_text_limpio.upper() for keyword in ["RESUMEN EJECUTIVO", "HALLAZGOS", "DICTAMEN", "RECOMENDACIONES", "ÁREA", "ANÁLISIS", "EVALUACIÓN"])
             )
             if es_subtitulo:
-                elements.append(Paragraph(p_text, heading_style))
+                elements.append(Paragraph(p_text_limpio, heading_style))
             else:
-                elements.append(Paragraph(p_text, body_style))
+                elements.append(Paragraph(p_text_limpio, body_style))
     
     elements.append(Spacer(1, 10))
     ancho_pagina_util = 540 
@@ -147,8 +150,9 @@ if st.button("🧠 Activar Razonamiento del Agente", type="primary"):
                 Tus reglas de oro son:
                 1. Incorpora en el dictamen la evaluación de la calidad de los datos proporcionados.
                 2. Realiza una auditoría integral cruzando la conciliación bancaria, el riesgo y las ventas según lo solicitado.
-                3. REGLA ESTRICTA: Redacta el informe única y exclusivamente en lenguaje gerencial, ejecutivo y de auditoría profesional. NO incluyas código de programación, bloques de código, ni menciones a Python o librerías técnicas en el texto del dictamen.
-                4. Estructura el dictamen con resumen ejecutivo, hallazgos críticos, observaciones de calidad de datos y recomendaciones de acción concretas.
+                3. REGLA ESTRICTA DE FORMATO: NO utilices tablas dibujadas con texto plano o símbolos Markdown (como barras | o guiones ---). Presenta los datos cuantitativos y comparativos mediante listas con viñetas o párrafos redactados con claridad gerencial.
+                4. REGLA TÉCNICA: Redacta el informe única y exclusivamente en lenguaje gerencial, ejecutivo y de auditoría profesional. NO incluyas código de programación, bloques de código, ni menciones a Python o librerías técnicas.
+                5. Estructura el dictamen con resumen ejecutivo, hallazgos críticos, observaciones de calidad de datos y recomendaciones de acción concretas.
                 """
                 prompt_final = f"{instruccion_maestra_permanente}\nINSTRUCCIÓN DEL USUARIO: {user_prompt}\nA continuación tienes los datos extraídos:\n{contexto_documentos}"
 
